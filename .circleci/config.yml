@@ -1,0 +1,91 @@
+version: 2.1
+
+executors:
+  win-arm-medium:
+    machine:
+      image: windows-11-arm:current
+    resource_class: windows.arm.medium
+
+  win-arm-large:
+    machine:
+      image: windows-11-arm:current
+    resource_class: windows.arm.large
+
+  win-arm-xlarge:
+    machine:
+      image: windows-11-arm:current
+    resource_class: windows.arm.xlarge
+
+  win-arm-2xlarge:
+    machine:
+      image: windows-11-arm:current
+    resource_class: windows.arm.2xlarge
+
+workflows:
+  test-windows-arm:
+    jobs:
+      - test-win-arm-medium
+      - test-win-arm-large
+      - test-win-arm-xlarge
+      - test-win-arm-2xlarge
+
+jobs:
+  test-win-arm-medium:
+    executor: win-arm-medium
+    steps:
+      - run:
+          name: Verify Windows ARM medium (4 CPU / 16GB)
+          command: |
+            echo "=== Windows ARM Medium ==="
+            echo "Expected: 4 CPU / 16 GB RAM / 40 credits per min"
+            systeminfo
+      - run:
+          name: Check CPU and memory
+          command: |
+            wmic cpu get Name,NumberOfCores,NumberOfLogicalProcessors
+            wmic OS get TotalVisibleMemorySize /Value
+
+  test-win-arm-large:
+    executor: win-arm-large
+    steps:
+      - run:
+          name: Verify Windows ARM large (8 CPU / 32GB)
+          command: |
+            echo "=== Windows ARM Large ==="
+            echo "Expected: 8 CPU / 32 GB RAM / 80 credits per min"
+            systeminfo
+      - run:
+          name: Check CPU and memory
+          command: |
+            wmic cpu get Name,NumberOfCores,NumberOfLogicalProcessors
+            wmic OS get TotalVisibleMemorySize /Value
+
+  test-win-arm-xlarge:
+    executor: win-arm-xlarge
+    steps:
+      - run:
+          name: Verify Windows ARM xlarge (16 CPU / 64GB)
+          command: |
+            echo "=== Windows ARM XLarge ==="
+            echo "Expected: 16 CPU / 64 GB RAM / 160 credits per min"
+            systeminfo
+      - run:
+          name: Check CPU and memory
+          command: |
+            wmic cpu get Name,NumberOfCores,NumberOfLogicalProcessors
+            wmic OS get TotalVisibleMemorySize /Value
+
+  test-win-arm-2xlarge:
+    executor: win-arm-2xlarge
+    steps:
+      - run:
+          name: Verify Windows ARM 2xlarge (32 CPU / 128GB)
+          command: |
+            echo "=== Windows ARM 2XLarge ==="
+            echo "Expected: 32 CPU / 128 GB RAM / 320 credits per min"
+            systeminfo
+      - run:
+          name: Check CPU and memory
+          command: |
+            wmic cpu get Name,NumberOfCores,NumberOfLogicalProcessors
+            wmic OS get TotalVisibleMemorySize /Value
