@@ -1,115 +1,129 @@
 version: 2.1
 
 executors:
-  win-arm-medium:
-    machine:
-      image: windows-11-arm:current
-    resource_class: windows.arm.medium
-
   win-arm-large:
     machine:
       image: windows-11-arm:current
     resource_class: windows.arm.large
 
-  win-arm-xlarge:
-    machine:
-      image: windows-11-arm:current
-    resource_class: windows.arm.xlarge
-
-  win-arm-2xlarge:
-    machine:
-      image: windows-11-arm:current
-    resource_class: windows.arm.2xlarge
-
 workflows:
-  test-windows-arm:
+  test-persist-to-workspace:
     jobs:
-      - test-win-arm-medium
-      - test-win-arm-large
-      - test-win-arm-xlarge
-      - test-win-arm-2xlarge
+      - persist-small-file
+      - persist-postman-app
+      - verify-small-file:
+          requires:
+            - persist-small-file
+      - verify-postman-app:
+          requires:
+            - persist-postman-app
 
 jobs:
-  test-win-arm-medium:
-    executor: win-arm-medium
-    steps:
-      - run:
-          name: Verify Windows ARM medium (4 CPU / 16GB)
-          shell: powershell.exe
-          command: |
-            Write-Host "=== Windows ARM Medium ==="
-            Write-Host "Expected: 4 CPU / 16 GB RAM / 40 credits per min"
-            systeminfo
-      - run:
-          name: Check CPU and memory
-          shell: powershell.exe
-          command: |
-            $cpu = Get-CimInstance Win32_Processor
-            Write-Host "CPU: $($cpu.Name)"
-            Write-Host "Cores: $($cpu.NumberOfCores)"
-            Write-Host "Logical Processors: $($cpu.NumberOfLogicalProcessors)"
-            $mem = Get-CimInstance Win32_OperatingSystem
-            Write-Host "Total RAM (GB): $([math]::Round($mem.TotalVisibleMemorySize / 1MB, 1))"
-
-  test-win-arm-large:
+  persist-small-file:
     executor: win-arm-large
+    shell: bash.exe
     steps:
       - run:
-          name: Verify Windows ARM large (8 CPU / 32GB)
-          shell: powershell.exe
+          name: Create test files
           command: |
-            Write-Host "=== Windows ARM Large ==="
-            Write-Host "Expected: 8 CPU / 32 GB RAM / 80 credits per min"
-            systeminfo
-      - run:
-          name: Check CPU and memory
-          shell: powershell.exe
-          command: |
-            $cpu = Get-CimInstance Win32_Processor
-            Write-Host "CPU: $($cpu.Name)"
-            Write-Host "Cores: $($cpu.NumberOfCores)"
-            Write-Host "Logical Processors: $($cpu.NumberOfLogicalProcessors)"
-            $mem = Get-CimInstance Win32_OperatingSystem
-            Write-Host "Total RAM (GB): $([math]::Round($mem.TotalVisibleMemorySize / 1MB, 1))"
+            set -e
+            mkdir -p app
+            echo "hello from windows arm" > app/test.txt
+            dd if=/dev/urandom of=app/100mb.bin bs=1M count=100 2>/dev/null || true
+            echo "Contents of app/:"
+            ls -lah app/
+      - persist_to_workspace:
+          root: .
+          paths:
+            - app
 
-  test-win-arm-xlarge:
-    executor: win-arm-xlarge
+  persist-postman-app:
+    executor: win-arm-large
+    shell: bash.exe
     steps:
       - run:
-          name: Verify Windows ARM xlarge (16 CPU / 64GB)
-          shell: powershell.exe
+          name: Download Postman Desktop app
           command: |
-            Write-Host "=== Windows ARM XLarge ==="
-            Write-Host "Expected: 16 CPU / 64 GB RAM / 160 credits per min"
-            systeminfo
-      - run:
-          name: Check CPU and memory
-          shell: powershell.exe
-          command: |
-            $cpu = Get-CimInstance Win32_Processor
-            Write-Host "CPU: $($cpu.Name)"
-            Write-Host "Cores: $($cpu.NumberOfCores)"
-            Write-Host "Logical Processors: $($cpu.NumberOfLogicalProcessors)"
-            $mem = Get-CimInstance Win32_OperatingSystem
-            Write-Host "Total RAM (GB): $([math]::Round($mem.TotalVisibleMemorySize / 1MB, 1))"
+            set -e
+            mkdir -p app
 
-  test-win-arm-2xlarge:
-    executor: win-arm-2xlarge
+            echo "Starting download of PostmanStage-win64-Setup.exe..."
+            curl -L -o app/PostmanStage-win64-Setup.exe https://dl-stage.pstmn.io/download/latest/win64
+
+            echo "Download complete. Contents of app/:"
+            ls -lah app/
+          no_output_timeout: 20m
+      - run:
+          name: Verify download integrity
+          command: |
+            set -e
+            FILE="app/PostmanStage-win64-Setup.exe"
+            SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE" 2>/dev/null || wc -c < "$FILE")
+            echo "File size: $SIZE bytes"
+            if [ "$SIZE" -lt 1000000 ]; then
+              echo "ERROR: File too small, download likely failed"
+              exit 1
+            fi
+            echo "File size looks valid"
+      - run:
+          name: Record timestamp before persist
+          command: |
+            echo "Starting persist_to_workspace at: $(date '+%Y-%m-%d %H:%M:%S')"
+      - persist_to_workspace:
+          root: .
+          paths:
+            - app
+
+  verify-small-file:
+    executor: win-arm-large
+    shell: bash.exe
     steps:
+      - attach_workspace:
+          at: .
       - run:
-          name: Verify Windows ARM 2xlarge (32 CPU / 128GB)
-          shell: powershell.exe
+          name: Verify small file workspace attachment
           command: |
-            Write-Host "=== Windows ARM 2XLarge ==="
-            Write-Host "Expected: 32 CPU / 128 GB RAM / 320 credits per min"
-            systeminfo
+            set -e
+            echo "Contents of app/:"
+            ls -lah app/
+
+            if [ -f app/test.txt ]; then
+              echo "PASS: test.txt found"
+              cat app/test.txt
+            else
+              echo "FAIL: test.txt not found"
+              exit 1
+            fi
+
+            if [ -f app/100mb.bin ]; then
+              echo "PASS: 100mb.bin found"
+            else
+              echo "FAIL: 100mb.bin not found"
+              exit 1
+            fi
+
+            echo "All workspace verifications passed!"
+
+  verify-postman-app:
+    executor: win-arm-large
+    shell: bash.exe
+    steps:
+      - attach_workspace:
+          at: .
       - run:
-          name: Check CPU and memory
-          shell: powershell.exe
+          name: Verify Postman app workspace attachment
           command: |
-            $cpu = Get-CimInstance Win32_Processor
-            Write-Host "CPU: $($cpu.Name)"
-            Write-Host "Cores: $($cpu.NumberOfCores)"
-            Write-Host "Logical Processors: $($cpu.NumberOfLogicalProcessors)"
-            $mem = Get-CimInstance Win32_OperatingSystem
-            Write-Host "Total RAM (GB): $([math]::Round($mem.TotalVisibleMemorySize / 1MB, 1))"
+            set -e
+            echo "Contents of app/:"
+            ls -lah app/
+
+            FILE="app/PostmanStage-win64-Setup.exe"
+            if [ -f "$FILE" ]; then
+              SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE" 2>/dev/null || wc -c < "$FILE")
+              echo "PASS: PostmanStage-win64-Setup.exe found, size: $SIZE bytes"
+            else
+              echo "FAIL: PostmanStage-win64-Setup.exe not found in workspace"
+              exit 1
+            fi
+
+            echo "Postman app workspace verification passed!"
